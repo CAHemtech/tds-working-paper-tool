@@ -2,19 +2,23 @@ import io
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Hem TDS Working Paper Tool", layout="wide")
+st.set_page_config(page_title="TDS Working Paper Tool", layout="wide")
 
 st.title("TDS Working Paper Tool")
-st.write("""
-Upload your Tally export Excel file (multiple ledgers in separate sheets).
 
-This app will:
+st.write("""
+Upload your Tally export Excel file (one ledger per sheet) and generate a single TDS working paper.
+
+You only need to:
+- Enter how many **fixed columns** are common across all sheets (X)
+- Enter **TDS ledger names / keywords** used in your file
+
+The app will:
 - Detect the ledger table starting from the row where the **first column is 'Date'**
-- Keep the first **X fixed columns** (you will enter X)
-- Treat the last of those X columns as **`Ledger_Amount`**
-- Remove rows where **Particulars contains 'Grand Total'**
+- Keep the first **X columns** and treat the last of those as **`Ledger_Amount`**
+- Remove rows where **Particulars** contains **'Grand Total'**
 - Find all columns whose header contains your **TDS keywords** and sum them into **`TDS_Amount`**
-- Add **`LedgerName`** from sheet name
+- Add **`LedgerName`** from the sheet name
 - Merge all sheets into one clean **TDS Working Paper**.
 """)
 
@@ -28,7 +32,7 @@ fixed_cols = st.number_input(
     max_value=100,
     value=21,
     step=1,
-    help="These are the first X columns that are common in every sheet. For your file, usually 21."
+    help="These are the first X columns that are common in every sheet. For your current file, 21 works."
 )
 
 # 3) TDS keywords / ledger names
@@ -52,12 +56,9 @@ def process_file(file, fixed_cols: int, tds_keywords_raw: str) -> pd.DataFrame |
         tds_keywords = ["tds"]
 
     for sheet_name in xls.sheet_names:
-        st.write(f"🔹 Processing sheet: **{sheet_name}**")
-
         raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
 
         if raw.dropna(how="all").empty:
-            st.write("  → Sheet empty, skipped")
             continue
 
         # 1️⃣ Detect header row: first column value == 'Date'
@@ -69,16 +70,15 @@ def process_file(file, fixed_cols: int, tds_keywords_raw: str) -> pd.DataFrame |
                 break
 
         if header_row_idx is None:
-            st.write("  ⚠ No 'Date' header in first column, skipping")
+            # Sheet doesn't contain the expected table structure
             continue
 
         # 2️⃣ Build proper DataFrame
         header = raw.iloc[header_row_idx].tolist()
-        data = raw.iloc[header_row_idx + 1:].copy()
+        data = raw.iloc[header_row_idx + 1 :].copy()
         data.columns = header
         data = data.dropna(how="all")
         if data.empty:
-            st.write("  → No data rows under header, skipped")
             continue
 
         # 3️⃣ Fixed first X columns
@@ -88,7 +88,7 @@ def process_file(file, fixed_cols: int, tds_keywords_raw: str) -> pd.DataFrame |
         # Rename last fixed column as Ledger_Amount
         base_data.rename(columns={base_cols[-1]: "Ledger_Amount"}, inplace=True)
 
-        # 4️⃣ Remove 'Grand Total' rows
+        # 4️⃣ Remove 'Grand Total' rows (if Particulars column exists)
         particulars_col = None
         for col in base_data.columns:
             if "particular" in str(col).lower():
@@ -96,25 +96,16 @@ def process_file(file, fixed_cols: int, tds_keywords_raw: str) -> pd.DataFrame |
                 break
 
         if particulars_col:
-            before = len(base_data)
             base_data = base_data[
                 ~base_data[particulars_col]
                 .astype(str)
                 .str.lower()
                 .str.contains("grand total")
             ]
-            after = len(base_data)
-            removed = before - after
-            if removed > 0:
-                st.write(f"  → Removed {removed} 'Grand Total' rows")
-        else:
-            st.write("  ⚠ No 'Particulars' column detected; cannot remove Grand Total rows")
 
         # 5️⃣ Lock / align to a fixed template for first X columns
         if template_cols is None:
             template_cols = base_data.columns.tolist()
-            st.write("  → Template columns locked:")
-            st.write(template_cols)
         else:
             # Add missing template columns as NaN, drop extras, reorder
             for col in template_cols:
@@ -130,11 +121,9 @@ def process_file(file, fixed_cols: int, tds_keywords_raw: str) -> pd.DataFrame |
                 tds_cols.append(col)
 
         if tds_cols:
-            st.write(f"  → TDS columns used: {tds_cols}")
             tds_sum = data[tds_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1)
             base_data["TDS_Amount"] = tds_sum
         else:
-            st.write("  ⚠ No TDS columns found in this sheet")
             base_data["TDS_Amount"] = pd.NA
 
         # 7️⃣ Ledger name from sheet
@@ -161,9 +150,9 @@ if run_button:
         if result_df is None:
             st.error("No valid data found. Check the file structure / header row.")
         else:
-            st.success(f"Done! Total rows: {len(result_df)}")
+            st.success(f"TDS Working Paper created successfully. Total rows: {len(result_df)}")
 
-            st.subheader("Preview of TDS Working Paper")
+            st.subheader("Preview")
             st.dataframe(result_df.head(100))
 
             # Prepare Excel file for download
@@ -180,4 +169,5 @@ if run_button:
             )
 
 st.markdown("---")
-st.caption("Built by Hem ⚡")
+st.caption("TDS Working Paper Tool")
+
