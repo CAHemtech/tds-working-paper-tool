@@ -14,11 +14,6 @@ You only need to:
 - Enter **TDS ledger names / keywords** used in your file
 
 The app will:
-- Detect the ledger table starting from the row where the **first column is 'Date'**
-- Keep the first **X columns** and treat the last of those as **`Ledger_Amount`**
-- Remove rows where **Particulars** contains **'Grand Total'**
-- Find all columns whose header contains your **TDS keywords** and sum them into **`TDS_Amount`**
-- Add **`LedgerName`** from the sheet name
 - Merge all sheets into one clean **TDS Working Paper**.
 """)
 
@@ -170,4 +165,5 @@ if run_button:
 
 st.markdown("---")
 st.caption("TDS Working Paper Tool")
+
 
